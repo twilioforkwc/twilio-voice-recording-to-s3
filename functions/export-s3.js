@@ -15,40 +15,44 @@ const transfer_recording = async (context, download_url, upload_stream) => {
   res.data.pipe(upload_stream);
   return new Promise((resolve, reject) => {
     upload_stream.on("uploaded", resolve);
-    upload_stream.on("error", reject);
+    upload_stream.on("error", (error) => reject(error));
   });
 };
 
 exports.handler = async function (context, event, callback) {
-  if (event.RecordingStatus !== "completed") {
-    callback(null, "Not completed.");
+  try {
+    if (event.RecordingStatus !== "completed") {
+      throw new Error("Not completed.");
+    }
+
+    const download_url = `${event.RecordingUrl}.mp3`;
+    const upload_path = `${context.AWS_S3_PREFIX}/${event.CallSid}_${event.RecordingSid}.mp3`;
+
+    // Initialize AWS configure
+    AWS.config.update({
+      region: context.AWS_REGION,
+      credentials: new AWS.Credentials(
+        context.AWS_ACCESS_KEY,
+        context.AWS_SECRET_ACCESS_KEY
+      ),
+    });
+
+    let s3Stream = S3UploadStream(new AWS.S3());
+
+    let upload_stream = s3Stream.upload({
+      Bucket: context.AWS_S3_BUCKET,
+      Key: upload_path,
+      ContentType: "audio/mpeg",
+    });
+
+    console.log(`Transferring ${event.CallSid} to ${upload_path}`);
+    await transfer_recording(context, download_url, upload_stream);
+
+    const client = context.getTwilioClient();
+    await client.recordings(event.RecordingSid).remove();
+
+    callback(null, "Transfer completed.");
+  } catch (err) {
+    callback(err);
   }
-
-  const download_url = `${event.RecordingUrl}.mp3`;
-  const upload_path = `${context.AWS_S3_PREFIX}/${event.CallSid}_${event.RecordingSid}.mp3`;
-
-  // Initialize AWS configure
-  AWS.config.update({
-    region: context.AWS_REGION,
-    credentials: new AWS.Credentials(
-      context.AWS_ACCESS_KEY,
-      context.AWS_SECRET_ACCESS_KEY
-    ),
-  });
-
-  let s3Stream = S3UploadStream(new AWS.S3());
-
-  let upload_stream = s3Stream.upload({
-    Bucket: context.AWS_S3_BUCKET,
-    Key: upload_path,
-    ContentType: "audio/mpeg",
-  });
-
-  console.log(`Transferring ${event.CallSid} to ${upload_path}`);
-  await transfer_recording(context, download_url, upload_stream);
-
-  const client = context.getTwilioClient();
-  await client.recordings(event.RecordingSid).remove();
-
-  callback(null, "Transfer completed.");
 };
