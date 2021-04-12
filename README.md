@@ -25,6 +25,7 @@ S3 にアップロードする権限をもった、AWS のアクセスキーと�
 
 ```sh
 git clone https://github.com/twilioforkwc/twilio-voice-recording-to-s3.git
+cd twilio-voice-recording-to-s3
 cp .env.sample .env
 ```
 
